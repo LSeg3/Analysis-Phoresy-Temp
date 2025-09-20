@@ -417,10 +417,22 @@ summary(m1)
 t1<-simulateResiduals(m1)
 plot(t1) #Residuals look good
 
-plot_model(m1c, type = "pred", terms=c("treat_ass2", "stage"))  +
+
+plot_model(m1, type = "pred", terms=c("treat_ass2"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+ggsave("grabbing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m1, type = "pred", terms=c("treat_ass2", "stage"))  +
   labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
   theme_classic(base_size = 18)
 ggsave("grabbing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+emm<-emmeans(m1, ~treat_ass2*stage)
+pairs(emm, simple = "each") #Final result
+
+pairs(emm)
 
 ```
 
