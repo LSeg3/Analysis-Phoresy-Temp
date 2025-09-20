@@ -1,0 +1,632 @@
+---
+title: 'Analysis: effect of temperature on phoresy'
+output:
+  html_document:
+    df_print: paged
+---
+
+# Parking downhill:
+Add the most detailed life stage
+test the effects with the more detailed life stage
+check the residuals of the binomial models
+
+# Loading the libraries
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(lubridate)
+library(survival)
+library(ggplot2)
+library(forcats)
+library(survminer)
+library(emmeans)
+library(googlesheets4)
+library(forcats)
+library(scales)
+library(ggridges)
+library(gridExtra)
+library(lme4)
+library(sjPlot)
+library(grid)
+library(DHARMa)
+```
+
+# Getting data 
+```{r}
+data<-read.csv("Data Phoresy Temperature.csv")
+data<-data%>% 
+  mutate(trial=paste(group,round,sep = "."),
+    treat_ass=case_when(inc=="A"~30,
+            inc=="B"~25,
+            inc=="C"~35,
+            inc=="D"~40,
+             TRUE~NA),
+            inc=as.factor(inc),
+            round=as.factor(round),
+         group=as.factor(group),
+            time_start=hm(time_start),
+         time_end=hm(time_end),
+         colony=as.factor(colony),
+         treat_ass2=as.factor(treat_ass),
+         grab=case_when(response=="No"~0,
+                        response=="Yes"~1,
+                        response=="Released"~1,
+                        TRUE~NA),
+         rel=case_when(response=="No"~NA,
+                        response=="Yes"~0,
+                        response=="Released"~1,
+                        TRUE~NA),
+    stage=as.factor(stage))
+ 
+
+str(data)
+```
+
+# Reading and organizing temperature data
+```{r}
+# First date
+
+# Incubator A
+temp<-read.csv("../Test run temps/Incubator A/Trial/3E0000007F5F6A41_062825_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator A/Trial/3E0000007F5F6A41_062825_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+ainc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="A", datetime=mdy_hms(Date.Time))
+str(ainc)
+ ainc<-ainc%>%
+   mutate(trial=case_when(datetime>=mdy_hms("6/28/25 9:31:01 AM") & datetime<=mdy_hms("6/28/25 10:34:01 AM")~"A.1",
+          datetime>=mdy_hms("6/28/25 12:00:01 PM") & datetime<=mdy_hms("6/28/25 1:00:01 PM")~"A.2",
+          datetime>=mdy_hms("6/28/25 14:34:01 PM") & datetime<=mdy_hms("6/28/25 15:34:01 PM")~"A.3",
+          datetime>=mdy_hms("6/28/25 16:58:01 PM") & datetime<=mdy_hms("6/28/25 17:58:01 PM")~"A.4",
+          datetime>=mdy_hms("6/28/25 10:45:01 AM") & datetime<=mdy_hms("6/28/25 11:46:01 AM")~"B.1",
+          datetime>=mdy_hms("6/28/25 13:13:01 PM") & datetime<=mdy_hms("6/28/25 14:13:01 PM")~"B.2",
+          datetime>=mdy_hms("6/28/25 15:45:01 PM") & datetime<=mdy_hms("6/28/25 16:45:01 PM")~"B.3",
+          datetime>=mdy_hms("6/28/25 18:10:01 PM") & datetime<=mdy_hms("6/28/25 19:10:01 PM")~"B.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+
+# Incubator B
+temp<-read.csv("../Test run temps/Incubator B/Trial/710000007F5CEF41_062825_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator B/Trial/710000007F5CEF41_062825_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+binc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="B", datetime=mdy_hms(Date.Time))
+str(binc)
+ binc<-binc%>%
+   mutate(trial=case_when(datetime>=mdy_hms("6/28/25 9:31:01 AM") & datetime<=mdy_hms("6/28/25 10:34:01 AM")~"A.1",
+          datetime>=mdy_hms("6/28/25 12:00:01 PM") & datetime<=mdy_hms("6/28/25 1:00:01 PM")~"A.2",
+          datetime>=mdy_hms("6/28/25 14:34:01 PM") & datetime<=mdy_hms("6/28/25 15:34:01 PM")~"A.3",
+          datetime>=mdy_hms("6/28/25 16:58:01 PM") & datetime<=mdy_hms("6/28/25 17:58:01 PM")~"A.4",
+          datetime>=mdy_hms("6/28/25 10:45:01 AM") & datetime<=mdy_hms("6/28/25 11:46:01 AM")~"B.1",
+          datetime>=mdy_hms("6/28/25 13:13:01 PM") & datetime<=mdy_hms("6/28/25 14:13:01 PM")~"B.2",
+          datetime>=mdy_hms("6/28/25 15:45:01 PM") & datetime<=mdy_hms("6/28/25 16:45:01 PM")~"B.3",
+          datetime>=mdy_hms("6/28/25 18:10:01 PM") & datetime<=mdy_hms("6/28/25 19:10:01 PM")~"B.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+ 
+ # Incubator C
+temp<-read.csv("../Test run temps/Incubator C/Trial/600000007F5EC041_062825_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator C/Trial/600000007F5EC041_062825_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+cinc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="C", datetime=mdy_hms(Date.Time))
+str(cinc)
+ cinc<-cinc%>%
+   mutate(trial=case_when(datetime>=mdy_hms("6/28/25 9:31:01 AM") & datetime<=mdy_hms("6/28/25 10:34:01 AM")~"A.1",
+          datetime>=mdy_hms("6/28/25 12:00:01 PM") & datetime<=mdy_hms("6/28/25 1:00:01 PM")~"A.2",
+          datetime>=mdy_hms("6/28/25 14:34:01 PM") & datetime<=mdy_hms("6/28/25 15:34:01 PM")~"A.3",
+          datetime>=mdy_hms("6/28/25 16:58:01 PM") & datetime<=mdy_hms("6/28/25 17:58:01 PM")~"A.4",
+          datetime>=mdy_hms("6/28/25 10:45:01 AM") & datetime<=mdy_hms("6/28/25 11:46:01 AM")~"B.1",
+          datetime>=mdy_hms("6/28/25 13:13:01 PM") & datetime<=mdy_hms("6/28/25 14:13:01 PM")~"B.2",
+          datetime>=mdy_hms("6/28/25 15:45:01 PM") & datetime<=mdy_hms("6/28/25 16:45:01 PM")~"B.3",
+          datetime>=mdy_hms("6/28/25 18:10:01 PM") & datetime<=mdy_hms("6/28/25 19:10:01 PM")~"B.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+ 
+ # Incubator D
+temp<-read.csv("../Test run temps/Incubator D/Trial/A50000007F67C641_062825_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator D/Trial/A50000007F67C641_062825_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+dinc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="D", datetime=mdy_hms(Date.Time))
+str(dinc)
+ dinc<-dinc%>%
+   mutate(trial=case_when(datetime>=mdy_hms("6/28/25 9:31:01 AM") & datetime<=mdy_hms("6/28/25 10:34:01 AM")~"A.1",
+          datetime>=mdy_hms("6/28/25 12:00:01 PM") & datetime<=mdy_hms("6/28/25 1:00:01 PM")~"A.2",
+          datetime>=mdy_hms("6/28/25 14:34:01 PM") & datetime<=mdy_hms("6/28/25 15:34:01 PM")~"A.3",
+          datetime>=mdy_hms("6/28/25 16:58:01 PM") & datetime<=mdy_hms("6/28/25 17:58:01 PM")~"A.4",
+          datetime>=mdy_hms("6/28/25 10:45:01 AM") & datetime<=mdy_hms("6/28/25 11:46:01 AM")~"B.1",
+          datetime>=mdy_hms("6/28/25 13:13:01 PM") & datetime<=mdy_hms("6/28/25 14:13:01 PM")~"B.2",
+          datetime>=mdy_hms("6/28/25 15:45:01 PM") & datetime<=mdy_hms("6/28/25 16:45:01 PM")~"B.3",
+          datetime>=mdy_hms("6/28/25 18:10:01 PM") & datetime<=mdy_hms("6/28/25 19:10:01 PM")~"B.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+
+incsd1<-bind_rows(ainc,binc,cinc,dinc) 
+
+
+
+# Second date
+
+# Incubator A
+temp<-read.csv("../Test run temps/Incubator A/Trial/710000007F5CEF41_073125_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator A/Trial/710000007F5CEF41_073125_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+ainc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="A", datetime=mdy_hms(Date.Time))
+str(ainc)
+ ainc<-ainc%>%
+   mutate(trial=case_when(datetime>=mdy_hms("7/31/25 8:30:01 AM") & datetime<=mdy_hms("7/31/25 9:32:01 AM")~"C.1",
+          datetime>=mdy_hms("7/31/25 10:59:01 AM") & datetime<=mdy_hms("7/31/25 12:01:01 PM")~"C.2",
+          datetime>=mdy_hms("7/31/25 13:31:01 PM") & datetime<=mdy_hms("7/31/25 14:34:01 PM")~"C.3",
+          datetime>=mdy_hms("7/31/25 16:05:01 PM") & datetime<=mdy_hms("7/31/25 17:13:01 PM")~"C.4",
+          datetime>=mdy_hms("7/31/25 9:43:01 AM") & datetime<=mdy_hms("7/31/25 10:43:01 AM")~"D.1",
+          datetime>=mdy_hms("7/31/25 12:11:01 PM") & datetime<=mdy_hms("7/31/25 13:15:01 PM")~"D.2",
+          datetime>=mdy_hms("7/31/25 14:46:01 PM") & datetime<=mdy_hms("7/31/25 15:52:01 PM")~"D.3",
+          datetime>=mdy_hms("7/31/25 17:22:01 PM") & datetime<=mdy_hms("7/31/25 18:24:01 PM")~"D.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+
+# Incubator B
+temp<-read.csv("../Test run temps/Incubator B/Trial/3E0000007F5F6A41_073125_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator B/Trial/3E0000007F5F6A41_073125_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+binc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="B", datetime=mdy_hms(Date.Time))
+str(binc)
+ binc<-binc%>%
+ mutate(trial=case_when(datetime>=mdy_hms("7/31/25 8:30:01 AM") & datetime<=mdy_hms("7/31/25 9:32:01 AM")~"C.1",
+          datetime>=mdy_hms("7/31/25 10:59:01 AM") & datetime<=mdy_hms("7/31/25 12:01:01 PM")~"C.2",
+          datetime>=mdy_hms("7/31/25 13:31:01 PM") & datetime<=mdy_hms("7/31/25 14:34:01 PM")~"C.3",
+          datetime>=mdy_hms("7/31/25 16:05:01 PM") & datetime<=mdy_hms("7/31/25 17:13:01 PM")~"C.4",
+          datetime>=mdy_hms("7/31/25 9:43:01 AM") & datetime<=mdy_hms("7/31/25 10:43:01 AM")~"D.1",
+          datetime>=mdy_hms("7/31/25 12:11:01 PM") & datetime<=mdy_hms("7/31/25 13:15:01 PM")~"D.2",
+          datetime>=mdy_hms("7/31/25 14:46:01 PM") & datetime<=mdy_hms("7/31/25 15:52:01 PM")~"D.3",
+          datetime>=mdy_hms("7/31/25 17:22:01 PM") & datetime<=mdy_hms("7/31/25 18:24:01 PM")~"D.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+ 
+ # Incubator C
+temp<-read.csv("../Test run temps/Incubator C/Trial/A50000007F67C641_073125_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator C/Trial/A50000007F67C641_073125_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+cinc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="C", datetime=mdy_hms(Date.Time))
+str(cinc)
+ cinc<-cinc%>%
+  mutate(trial=case_when(datetime>=mdy_hms("7/31/25 8:30:01 AM") & datetime<=mdy_hms("7/31/25 9:32:01 AM")~"C.1",
+          datetime>=mdy_hms("7/31/25 10:59:01 AM") & datetime<=mdy_hms("7/31/25 12:01:01 PM")~"C.2",
+          datetime>=mdy_hms("7/31/25 13:31:01 PM") & datetime<=mdy_hms("7/31/25 14:34:01 PM")~"C.3",
+          datetime>=mdy_hms("7/31/25 16:05:01 PM") & datetime<=mdy_hms("7/31/25 17:13:01 PM")~"C.4",
+          datetime>=mdy_hms("7/31/25 9:43:01 AM") & datetime<=mdy_hms("7/31/25 10:43:01 AM")~"D.1",
+          datetime>=mdy_hms("7/31/25 12:11:01 PM") & datetime<=mdy_hms("7/31/25 13:15:01 PM")~"D.2",
+          datetime>=mdy_hms("7/31/25 14:46:01 PM") & datetime<=mdy_hms("7/31/25 15:52:01 PM")~"D.3",
+          datetime>=mdy_hms("7/31/25 17:22:01 PM") & datetime<=mdy_hms("7/31/25 18:24:01 PM")~"D.4",
+          TRUE~NA))%>%
+   drop_na(trial)
+ 
+ # Incubator D
+temp<-read.csv("../Test run temps/Incubator D/Trial/D80000007F619C41_073125_temp.csv", skip=19)
+temp<-rename(temp, temps=Value)
+hum<-read.csv("../Test run temps/Incubator D/Trial/D80000007F619C41_073125_hum.csv", skip=19)
+hum<-rename(hum, hums=Value)
+dinc<-merge(temp, hum, by="Date.Time") %>%
+  select(Date.Time, temps,hums) %>%
+  mutate(inc="D", datetime=mdy_hms(Date.Time))
+str(dinc)
+ dinc<-dinc%>%
+ mutate(trial=case_when(datetime>=mdy_hms("7/31/25 8:30:01 AM") & datetime<=mdy_hms("7/31/25 9:32:01 AM")~"C.1",
+          datetime>=mdy_hms("7/31/25 10:59:01 AM") & datetime<=mdy_hms("7/31/25 12:01:01 PM")~"C.2",
+          datetime>=mdy_hms("7/31/25 13:31:01 PM") & datetime<=mdy_hms("7/31/25 14:34:01 PM")~"C.3",
+          datetime>=mdy_hms("7/31/25 16:05:01 PM") & datetime<=mdy_hms("7/31/25 17:13:01 PM")~"C.4",
+          datetime>=mdy_hms("7/31/25 9:43:01 AM") & datetime<=mdy_hms("7/31/25 10:43:01 AM")~"D.1",
+          datetime>=mdy_hms("7/31/25 12:11:01 PM") & datetime<=mdy_hms("7/31/25 13:15:01 PM")~"D.2",
+          datetime>=mdy_hms("7/31/25 14:46:01 PM") & datetime<=mdy_hms("7/31/25 15:52:01 PM")~"D.3",
+          datetime>=mdy_hms("7/31/25 17:22:01 PM") & datetime<=mdy_hms("7/31/25 18:24:01 PM")~"D.4",
+          TRUE~NA)) %>%
+   drop_na(trial)
+
+incs<-bind_rows(incsd1,ainc,binc,cinc,dinc) 
+
+incs<-incs%>%
+  mutate(time=format(as.POSIXct(datetime), "%H:%M:%S"))
+
+str(incs)  
+
+
+ 
+# Get averages per incubator per trial
+temps_incs<-incs %>%
+  group_by(inc, trial) %>%
+  summarize(tmean=mean(temps), tstdev=sd(temps), tmin=min(temps), tmax=max(temps)) %>%
+  mutate(trange=tmax-tmin)
+temps_incs
+
+hums_incs<-incs %>%
+  group_by(inc, trial) %>%
+  summarize(hmean=mean(hums), hstdev=sd(hums), hmin=min(hums), hmax=max(hums)) %>%
+  mutate(hrange=hmax-hmin)
+hums_incs
+
+ggplot(data=incs, aes(x=inc, y=temps))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)
+ggplot(data=incs, aes(x=inc, y=temps))+geom_boxplot()+geom_jitter(aes(color=trial), alpha=0.5)
+ggplot(data=incs, aes(x=inc, y=temps))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)+facet_wrap(~trial)
+
+ggplot(data=incs, aes(x=inc, y=hums))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)
+ggplot(data=incs, aes(x=inc, y=hums))+geom_boxplot()+geom_jitter(aes(color=trial), alpha=0.5)
+ggplot(data=incs, aes(x=inc, y=hums))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)+facet_wrap(~trial)
+
+
+# Adding the temperatures to the dataset
+data<-left_join(data, temps_incs)
+
+data<-left_join(data, hums_incs)
+
+
+```
+
+# Creating new categorical treatment assignment based on tmean
+```{r}
+data<-data %>%
+  mutate(treat_ass3=case_when(
+      tmean>24 & tmean<27.5 ~ 25,
+      tmean>27.5 & tmean<32.5 ~ 30,
+      tmean>32.5 & tmean<37.5 ~ 35,
+      tmean>37.5 & tmean<42.5 ~ 40,
+      tmean>42.5 & tmean<47.5 ~ 45),
+      treat_ass4=as.factor(treat_ass3),
+      diffs_treat=treat_ass3-treat_ass)
+
+# Checking tmeans
+ggplot(data=data, aes(x=inc, y=tmean))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)
+ggplot(data=data, aes(x=inc, y=tmean))+geom_boxplot()+geom_jitter(aes(color=trial), alpha=0.5)
+ggplot(data=data, aes(x=inc, y=tmean))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)+facet_wrap(~trial)
+
+# Checking tmeans assigned to treatment by rounding them
+ggplot(data=data, aes(x=treat_ass2, y=treat_ass3))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)
+ggplot(data=data, aes(x=treat_ass4, y=treat_ass3))+geom_boxplot()+geom_jitter(aes(color=trial), alpha=0.5)
+ggplot(data=data, aes(x=inc, y=treat_ass3))+geom_boxplot()+geom_jitter(color="blue", alpha=0.5)+facet_wrap(~trial)
+
+ggplot(data=data, aes(y=tmean, x=tmean))+geom_boxplot()+geom_jitter(aes(color=treat_ass4), alpha=0.5)
+
+data2<-data%>%filter(grab==1)
+
+
+# Checking if all individuals experienced all temps
+# checking that all incubators were assigned correctly to begin with
+check<-data%>%group_by(id2, inc) %>% summarize(counting=n()) %>% filter(counting!=1)
+check #this gives 0 rows, meaning all individuals were assigned to the incubators at least once
+
+# Now checking if, after accounting for the temperatures each incubator actually had on each trial, which individuals experienced a temperature treatment twice
+check2<-data%>%group_by(id2, treat_ass4) %>% summarize(counting=n()) %>% filter(counting!=1)
+check2 #this gives 18 rows, meaning 18 individuals experienced  a temperature twice
+
+# removing those rounds where the temperature did not match what was expected for the treatment
+datarem<-data%>%filter(diffs_treat==0)
+
+# checking sample size of the temperature treamtments
+check3<-datarem%>%group_by(id2, treat_ass2) %>% summarize(counting=n()) 
+check3 #this gives 18 rows, meaning 18 individuals experienced  a temperature twice
+max(as.numeric(check3$counting))
+min(as.numeric(check3$counting))
+
+check4<-check3%>% group_by(treat_ass2) %>%summarize(suma=sum(counting))
+check4
+
+check5<-check3%>% group_by(id2) %>%summarize(suma=sum(counting))
+check5
+min(as.numeric(check5$suma)) #none of the individuals that lost trials lost more than 1 trial, they all had at least experienced 3 temperatures
+```
+
+
+
+
+# Plotting
+```{r}
+
+ggplot(data=incs, aes(x=time, y=temps, color=inc, group=trial)) +
+  geom_line(aes(group=inc)) +
+  ylab("Temperature (°C)")+
+  xlab("Time of day (s)") +
+  theme_classic()+
+  scale_y_continuous(limits=c(24,46)) + 
+  scale_color_manual(values=c("gold1", "orange2", "orangered2","orangered4")) +
+  facet_wrap(~trial, scales="free_x")
+  
+  
+ggplot(data=incs, aes(x=time, y=hums, color=inc, group=trial)) +
+  geom_line(aes(group=inc)) + 
+  ylab("Humidity (%)")+
+  xlab("Time of day (s)") +
+  theme_classic()+
+  scale_y_continuous(limits=c(1,100))+ 
+  scale_color_manual(values=c("gold1", "orange2", "orangered2","orangered4"))+
+  facet_wrap(~trial, scales="free_x")
+  
+```
+
+
+```{r echo=F}
+# with the assigned treatment
+resumentemp<-data%>%filter(response!="Dead", response!="Escaped") %>% 
+  group_by(treat_ass2, response) %>%
+  summarize(n=n())
+resumentemp
+
+ggplot(data=resumentemp, aes(x=treat_ass2, y=n, fill=response))+ geom_bar(stat="identity")
+
+ggplot(data=resumentemp, aes(x=treat_ass2, y=n))+ geom_bar(stat="identity")+facet_wrap(~response)
+
+
+# With the re-assigned treatment based on the tmean
+resumentemp<-data%>%filter(response!="Dead", response!="Escaped") %>% 
+  group_by(treat_ass4, response) %>%
+  summarize(n=n())
+resumentemp
+
+ggplot(data=resumentemp, aes(x=treat_ass4, y=n, fill=response))+ geom_bar(stat="identity")
+
+ggplot(data=resumentemp, aes(x=treat_ass4, y=n))+ geom_bar(stat="identity")+facet_wrap(~response)
+
+```
+
+```{r}
+# visualizing grabbing data
+ggplot(aes(y=grab, x=tmean), data=data)+geom_point(alpha=0.5, size=2)+facet_wrap(~stage)+geom_smooth()
+
+
+#Visualizing releasing data
+ggplot(aes(y=rel, x=tmean), data=data2)+geom_point(alpha=0.5, size=2)+facet_wrap(~stage)+geom_smooth()
+
+# visualizing grabbing data
+ggplot(aes(y=grab, x=treat_ass4, color=stage), data=data)+geom_boxplot()
+
+
+```
+
+
+
+# 1. Is there an effect of temperature on the probability of grabbing the beetle?
+
+```{r}
+#looking at the assigned temperature treatments
+m1<-glmer(grab~treat_ass2+(1|id2), data=data, family=binomial)
+summary(m1)
+
+plot_model(m1, type = "pred", terms="treat_ass2")  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+m1b<-glmer(grab~treat_ass+(1|id2), data=data, family=binomial)
+summary(m1b)
+
+plot_model(m1b, type = "pred", terms="treat_ass")+
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+# Including stage
+m1c<-glmer(grab~treat_ass2*stage+(1|id2), data=data, family=binomial)
+summary(m1c)
+
+plot_model(m1c, type = "pred", terms=c("treat_ass2", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+ggsave("grabbing_per_stage_cat.png",plot = last_plot(),width=8, height=6, units="in" )
+
+# Looking at the mean temperature of each trial
+m1d<-glmer(grab~tmean+(1|id2), data=data, family=binomial)
+summary(m1d)
+plot_model(m1d, type = "pred", terms="tmean")  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+# Including stage
+m1e<-glmer(grab~tmean*stage+(1|id2), data=data, family=binomial)
+summary(m1e)
+
+plot_model(m1e, type = "pred", terms=c("tmean", "stage"), show.data=T, show.p=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic(base_size = 18)
+
+ggsave("grabbing_per_stage.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+# Looking at the categorical mean temperature of each trial
+data3<-data %>% filter(tmean<44)
+m1f<-glmer(grab~treat_ass4*stage+(1|id2), data=data3, family=binomial)
+summary(m1f) #model failed to converge
+
+m1f<-glmer(grab~treat_ass3*stage+(1|id2), data=data, family=binomial)
+summary(m1f) #model failed to converge
+
+plot_model(m1f, type = "pred", terms=c("treat_ass3", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+ggsave("grabbing_per_stage_cat_reassigned.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+# Comparing models
+anova(m1e,m1f) #los modelos son iguales
+
+## Checking residuals in general
+t2<-simulateResiduals(m1e)
+plot(t2)
+
+t3<-simulateResiduals(m1f)
+plot(t3)
+
+# The residuals of both models look good
+
+
+
+```
+
+# 2. Is there an effect of temperature on the probability of releasing the beetle?
+
+```{r}
+
+
+m1<-glmer(rel~treat_ass2+(1|id2), data=data2, family=binomial)
+summary(m1)
+
+plot_model(m1, type = "pred", terms="treat_ass2")  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic()
+
+m1b<-glmer(rel~treat_ass+(1|id2), data=data, family=binomial)
+summary(m1b)
+
+plot_model(m1b, type = "pred", terms="treat_ass")+
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+# Including stage
+m1c<-glmer(rel~treat_ass2*stage+(1|id2), data=data, family=binomial)
+summary(m1c)
+
+plot_model(m1c, type = "pred", terms=c("treat_ass2", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+m1d<-glmer(rel~treat_ass*stage+(1|id2), data=data, family=binomial)
+summary(m1d)
+
+plot_model(m1d, type = "pred", terms=c("treat_ass", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+# Looking at the actual temperature of each trial
+m1e<-glmer(rel~tmean+(1|id2), data=data, family=binomial)
+summary(m1e)
+
+plot_model(m1e, type = "pred", terms=c("tmean"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+m1f<-glmer(rel~tmean*stage+(1|id2), data=data2, family=binomial)
+summary(m1f)
+
+plot_model(m1f, type = "pred", terms=c("tmean", "stage"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)
+ggsave("Releasing_per_stage.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m1f, type = "pred", terms=c("tmean"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)
+ggsave("Releasing_per_temp.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+# Looking at adults to see if their slope differs from 0
+ads<-data2%>%filter(stage=="Adult")
+m1g<-glmer(rel~tmean+(1|id2), data=ads, family=binomial)
+summary(m1g)
+
+ads_prob<-plot_model(m1g, type = "pred", terms=c("tmean"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)+ggtitle("Adults")
+ads_prob
+ggsave("Releasing_per_temp_Adults.png",plot = last_plot(),width=8, height=6, units="in" )
+
+# Looking at adults to see if their slope differs from 0
+juvs<-data2%>%filter(stage=="Juveniles")
+m1h<-glmer(rel~tmean+(1|id2), data=juvs, family=binomial)
+summary(m1h)
+
+juvs_prob<-plot_model(m1h, type = "pred", terms=c("tmean"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)+ggtitle("Juveniles")
+juvs_prob
+ggsave("Releasing_per_temp_Juvs.png",plot = last_plot(),width=8, height=6, units="in" )
+
+both<-ggarrange(juvs_prob+rremove("xlab"), ads_prob+rremove("xlab")+rremove("ylab"))
+
+annotate_figure(both,bottom = textGrob("Temperature (°C)", gp = gpar(cex = 1.3)))
+ggsave("Releasing_per_temp_both_stages.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+
+
+# Looking at the categorical mean temperature of each trial
+m1i<-glmer(rel~treat_ass4*stage+(1|id2), data=data2, family=binomial)
+summary(m1i) #model failed to converge
+
+m1j<-glmer(rel~treat_ass3*stage+(1|id2), data=data2, family=binomial)
+summary(m1j)
+
+plot_model(m1j, type = "pred", terms=c("treat_ass3", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+data4<-data2 %>% filter(tmean<44)
+m1k<-glmer(rel~treat_ass3*stage+(1|id2), data=data4, family=binomial)
+summary(m1k)
+
+plot_model(m1k, type = "pred", terms=c("treat_ass3", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+
+
+
+# Comparing models
+anova(m1f,m1j) #los modelos son iguales
+
+## Checking residuals in general
+t2<-simulateResiduals(m1f)
+plot(t2)
+
+t3<-simulateResiduals(m1j)
+plot(t3) # this model has issues
+
+
+
+m1l<-glmer(rel~tmean*stage+(1|id2), data=data4, family=binomial)
+summary(m1l)
+
+anova(m1l, m1k)  #los modelos son iguales
+t4<-simulateResiduals(m1l)
+plot(t4) 
+t5<-simulateResiduals(m1k)
+plot(t5) 
+
+#lr = range(data$tmean)
+#nd <- expand.grid(tmean = seq(lr[1], lr[2], length = 20), stage = factor(levels(data$stage)))
+
+#nd$pp = predict(m1f, newdata = nd, type = "response", re.form = ~0)
+
+#ggplot(nd, aes(x = tmean, y = pp, col = stage)) + geom_line(alpha = 0.5) + 
+ #   ylab("Probability of release") + geom_line(aes(x = tmean, 
+#    y = pp, col = stage), data = nd, inherit.aes = FALSE, size = 2) + geom_rug(aes(x = tmean), 
+#    data = filter(data, rel>0), sides = "t", inherit.aes = FALSE) + geom_rug(aes(x = tmean), 
+#    data = filter(data, rel<1), sides = "b", inherit.aes = FALSE) + facet_wrap(~stage) + 
+#    guides(color = FALSE)
+
+```
+
+
+# Sample sizes
+```{r}
+data %>% group_by( group, stage) %>%
+  summarize(n_distinct(id2))
+
+data %>% group_by( stage) %>%
+  summarize(n_distinct(id2))
+```
+31+37
+
+
