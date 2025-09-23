@@ -57,7 +57,8 @@ data<-data%>%
                         response=="Yes"~0,
                         response=="Released"~1,
                         TRUE~NA),
-    stage=as.factor(stage))
+    stage=as.factor(stage), 
+    stage2=factor(stage2, levels=c("Protonymph", "Deutonymph", "Tritonymph", "Male", "Female")))
  
 
 str(data)
@@ -314,8 +315,34 @@ check #this gives 0 rows, meaning all individuals were assigned to the incubator
 check2<-data%>%group_by(id2, treat_ass4) %>% summarize(counting=n()) %>% filter(counting!=1)
 check2 #this gives 18 rows, meaning 18 individuals experienced  a temperature twice
 
+
+# checking which trials had the wrong temperature 
+#datawrong<-data%>%filter(diffs_treat==-5)
+datawrong<-data%>%filter(diffs_treat==-5)
+
 # removing those rounds where the temperature did not match what was expected for the treatment
-datarem<-data%>%filter(diffs_treat==0)
+#datarem<-data%>%filter(diffs_treat==0)
+datarem<-data%>%filter(!((group=="B" & round=="2" & id2=="B.3") |
+                          (group=="B" & round=="2" & id2=="B.4")|
+                           (group=="B" & round=="3" & id2=="B.9")|
+                           (group=="B" & round=="3" & id2=="B.10")|
+                           (group=="B" & round=="4" & id2=="B.23")|
+                           (group=="B" & round=="4" & id2=="B.24")|
+                           (group=="C" & round=="2" & id2=="C.9")|
+                           (group=="C" & round=="2" & id2=="C.10")|
+                           (group=="C" & round=="3" & id2=="C.11")|
+                           (group=="C" & round=="3" & id2=="C.12")|
+                           (group=="C" & round=="4" & id2=="C.7")|
+                           (group=="C" & round=="4" & id2=="C.8")|
+                            (group=="D" & round=="2" & id2=="D.9")|
+                           (group=="D" & round=="2" & id2=="D.10")|
+                           (group=="D" & round=="3" & id2=="D.11")|
+                           (group=="D" & round=="3" & id2=="D.12")|
+                           (group=="D" & round=="4" & id2=="D.7")|
+                           (group=="D" & round=="4" & id2=="D.8")
+                           ))
+
+
 
 # checking sample size of the temperature treamtments
 check3<-datarem%>%group_by(id2, treat_ass4) %>% summarize(counting=n()) 
@@ -330,6 +357,11 @@ check5<-check3%>% group_by(id2) %>%summarize(suma=sum(counting))
 check5
 min(as.numeric(check5$suma)) #none of the individuals that lost trials lost more than 1 trial, they all had at least experienced 3 temperatures
 
+check6<-datarem%>%group_by(stage, treat_ass4) %>% summarize(counting=n()) 
+check6
+
+check7<-datarem%>%group_by(stage2, treat_ass4) %>% summarize(counting=n()) 
+check7
 
 # I think removing the ones that were not working properly would be better, because that way I make sure all individuals experienced a temperature once, not twice, so I should use datarem
 
@@ -391,19 +423,25 @@ ggplot(aes(y=rel, x=tmean), data=data3)+geom_point(alpha=0.5, size=2)+facet_wrap
 
 # visualizing grabbing data
 grab1<-datarem %>% 
-  group_by(stage,treat_ass2, grab) %>%
+  group_by(stage,treat_ass4, grab) %>%
   summarize(count=n())
 grab1
-ggplot(grab1, aes(x=treat_ass2, y=grab))+geom_point(aes(size=count), alpha=0.5) +facet_wrap(~stage)
+ggplot(grab1, aes(x=treat_ass4, y=grab))+geom_point(aes(size=count), alpha=0.5) +facet_wrap(~stage)
 
 #Visualizing releasing data
 rel1<-data3 %>% 
-  group_by(stage,treat_ass2, rel) %>%
+  group_by(stage,treat_ass4, rel) %>%
   summarize(count=n())
 rel1
-ggplot(rel1, aes(x=treat_ass2, y=rel))+geom_point(aes(size=count), alpha=0.5) +facet_wrap(~stage)
+ggplot(rel1, aes(x=treat_ass4, y=rel))+geom_point(aes(size=count), alpha=0.5) +facet_wrap(~stage)
 
-ggplot(rel1, aes(x=treat_ass2, y=rel, color=stage))+geom_point(aes(size=count), alpha=0.3) 
+ggplot(rel1, aes(x=treat_ass4, y=rel, color=stage))+geom_point(aes(size=count), alpha=0.3) 
+
+rel2<-data3 %>% 
+  group_by(stage2,treat_ass4, rel) %>%
+  summarize(count=n())
+rel2
+ggplot(rel2, aes(x=treat_ass4, y=rel))+geom_point(aes(size=count), alpha=0.5) +facet_wrap(~stage2)
 
 
 ```
@@ -411,66 +449,278 @@ ggplot(rel1, aes(x=treat_ass2, y=rel, color=stage))+geom_point(aes(size=count), 
 # Trying to finalize and clean the analyses
 # 1. Is there an effect of temperature on the probability of grabbing the beetle?
 ```{r}
-m1<-glmer(grab~treat_ass2*stage+(1|id2), data=datarem, family=binomial)
+# Adults vs juveniles
+datarem2<-datarem%>%filter(diffs_treat<5)
+write.csv(datarem2, "datarem2.csv")
+m1<-glmer(grab~treat_ass4*stage+(1|id2), data=datarem2, family=binomial)
 summary(m1)
 
 t1<-simulateResiduals(m1)
 plot(t1) #Residuals look good
 
 
-plot_model(m1, type = "pred", terms=c("treat_ass2"))  +
+plot_model(m1, type = "pred", terms=c("treat_ass4"))  +
   labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
   theme_classic(base_size = 18)
 ggsave("grabbing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
 
-plot_model(m1, type = "pred", terms=c("treat_ass2", "stage"))  +
+plot_model(m1, type = "pred", terms=c("treat_ass4", "stage"))  +
   labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
-  theme_classic(base_size = 18)
+  theme_classic(base_size = 18)+geom_line()
 ggsave("grabbing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
 
 
-emm<-emmeans(m1, ~treat_ass2*stage)
+emm<-emmeans(m1, ~treat_ass4*stage,  p.adjust = "holm")
 pairs(emm, simple = "each") #Final result
 
 pairs(emm)
+
+
+
+# Trying a GAM model
+library(mgcv)
+m1<-gamm(grab~tmean*stage, random=list(id2=~1), data=datarem2, family=binomial)
+summary(m1$gam)
+
+
+
+
+# all life stages
+m1b<-glmer(grab~treat_ass4*stage2+(1|id2), data=datarem, family=binomial)
+summary(m1b) # Madel failed to converge
+
+m1b<-glmer(grab~treat_ass3*stage2+(1|id2), data=datarem, family=binomial)
+summary(m1b) # Madel failed to converge
+
 
 ```
 
 # 2. Is there an effect of temperature on the probability of releasing the beetle?
 ```{r}
 #Using categorical temperature
-m2<-glmer(rel~treat_ass2*stage+(1|id2), data=data3, family=binomial)
+data4<-datarem2%>%filter(grab==1)
+m2<-glmer(rel~treat_ass4*stage+(1|id2), data=data4, family=binomial)
 summary(m2)
 
 
 t2<-simulateResiduals(m2)
 plot(t2) #Residuals look good
 
-plot_model(m2, type = "pred", terms=c("treat_ass2"))  +
-  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+plot_model(m2, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL)+
   theme_classic(base_size = 18)
 ggsave("releasing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
 
-plot_model(m2, type = "pred", terms=c("treat_ass2", "stage"))  +
-  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
-  theme_classic(base_size = 18)
+plot_model(m2, type = "pred", terms=c("treat_ass4", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL)+
+  theme_classic(base_size = 18)+geom_line()
 ggsave("releasing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
 
-emm<-emmeans(m2, ~treat_ass2*stage)
+emm<-emmeans(m2, ~treat_ass4*stage, p.adjust = "holm")
 pairs(emm, simple = "each") #Final result
 
 
+# Trying a GAM model
+library(mgcv)
+gamm
+m2<-gamm(rel~tmean*stage, random=list(id2=~1), data=data4, family=binomial)
+summary(m2$gam)
 
-m2<-glmer(rel~treat_ass4*stage+(1|id2), data=data2, family=binomial)
-summary(m2) #eigen value issue
 
+
+# Using numerical temperature
+
+# Looking at the categorical mean temperature of each trial
+
+m1f<-glmer(rel~tmean*stage+(1|id2), data=data4, family=binomial)
+summary(m1f) 
+
+plot_model(m1f, type = "pred", terms=c("tmean", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL) +
+  theme_classic()
+ggsave("grabbing_per_stage_numerical_reassigned.png",plot = last_plot(),width=8, height=6, units="in" )
+
+# Looking at adults to see if their slope differs from 0
+ads<-data3%>%filter(stage=="Adult")
+m1g<-glmer(rel~tmean+(1|id2), data=ads, family=binomial)
+summary(m1g)
+
+ads_prob<-plot_model(m1g, type = "pred", terms=c("tmean"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)+ggtitle("Adults")
+ads_prob
+ggsave("Releasing_per_temp_Adults.png",plot = last_plot(),width=8, height=6, units="in" )
+
+# Looking at adults to see if their slope differs from 0
+juvs<-data3%>%filter(stage=="Juveniles")
+m1h<-glmer(rel~tmean+(1|id2), data=juvs, family=binomial)
+summary(m1h)
+
+juvs_prob<-plot_model(m1h, type = "pred", terms=c("tmean"), show.data=T, show.p=T, show.values=T)  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL) +
+  theme_classic(base_size = 18)+ggtitle("Juveniles")
+juvs_prob
+ggsave("Releasing_per_temp_Juvs.png",plot = last_plot(),width=8, height=6, units="in" )
+
+both<-ggarrange(juvs_prob+rremove("xlab"), ads_prob+rremove("xlab")+rremove("ylab"))
+
+annotate_figure(both,bottom = textGrob("Temperature (°C)", gp = gpar(cex = 1.3)))
+ggsave("Releasing_per_temp_both_stages.png",plot = last_plot(),width=8, height=6, units="in" )
 
 
 ```
 
 
+# Just doing the 1st trial
+```{r}
+datarem1tr<-datarem2%>% filter(round==1)
+m1<-glm(grab~treat_ass4*stage, data=datarem1tr, family=binomial)
+summary(m1)
+
+t1<-simulateResiduals(m1)
+plot(t1) #Residuals look good
 
 
+plot_model(m1, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("grabbing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m1, type = "pred", terms=c("treat_ass4", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("grabbing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+emm<-emmeans(m1, ~treat_ass4*stage,  p.adjust = "holm")
+pairs(emm, simple = "each") #Final result
+
+pairs(emm)
+
+
+
+
+data5<-datarem1tr%>%filter(grab==1)
+m2<-glm(rel~treat_ass4*stage, data=data5, family=binomial)
+summary(m2)
+
+
+t2<-simulateResiduals(m2)
+plot(t2) #Residuals look good
+
+plot_model(m2, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("releasing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m2, type = "pred", terms=c("treat_ass4", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("releasing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+emm<-emmeans(m2, ~treat_ass4*stage, p.adjust = "holm")
+pairs(emm, simple = "each") #Final result
+
+
+
+```
+
+# Comparing just tritonymphs, females and males
+```{r}
+datarem3<-datarem2%>% filter(stage2!="Protonymph") %>% filter(stage2!="Deutonymph")
+
+m1<-glmer(grab~treat_ass4*stage2+round+(1|id2), data=datarem3, family=binomial)
+summary(m1) #convergence issue
+
+t1<-simulateResiduals(m1)
+plot(t1) #Residuals look good
+
+
+plot_model(m1, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("grabbing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m1, type = "pred", terms=c("treat_ass4", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+#ggsave("grabbing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+emm<-emmeans(m1, ~treat_ass4*stage,  p.adjust = "holm")
+pairs(emm, simple = "each") #Final result
+
+pairs(emm)
+
+
+
+# For releasing
+data6<-datarem3%>%filter(grab==1)
+m2<-glmer(rel~treat_ass4*stage2+round+(1|id2), data=data6, family=binomial)
+summary(m2) #convergence issue
+
+
+t2<-simulateResiduals(m2)
+plot(t2) #Residuals look good
+
+plot_model(m2, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+ggsave("releasing_temp_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+plot_model(m2, type = "pred", terms=c("treat_ass4", "stage"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Releasing", title = NULL)+
+  theme_classic(base_size = 18)
+ggsave("releasing_per_stage_cat_final.png",plot = last_plot(),width=8, height=6, units="in" )
+
+emm<-emmeans(m2, ~treat_ass4*stage, p.adjust = "holm")
+pairs(emm, simple = "each") #Final result
+
+
+
+```
+
+# Comparing just adults across temperatures
+```{r}
+datarem4<-datarem2%>% filter(stage=="Adult") 
+
+
+m1<-glmer(grab~treat_ass4+(1|id2)+(1|round), data=datarem4, family=binomial)
+summary(m1) 
+
+t1<-simulateResiduals(m1)
+plot(t1) #Residuals look good
+
+
+plot_model(m1, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+ggsave("grabbing_temp_cat_final_adults.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+
+
+# For releasing
+data7<-datarem4%>%filter(grab==1)
+m2<-glmer(rel~treat_ass4+(1|id2), data=data7, family=binomial)
+summary(m2) #convergence issue
+
+
+t2<-simulateResiduals(m2)
+plot(t2) #Residuals look good
+
+plot_model(m2, type = "pred", terms=c("treat_ass4"))  +
+  labs(x = "Temperature (°C)", y = "Predicted Probability of Grabbing", title = NULL)+
+  theme_classic(base_size = 18)
+ggsave("releasing_temp_cat_final_adult.png",plot = last_plot(),width=8, height=6, units="in" )
+
+
+emm<-emmeans(m2, ~treat_ass4, p.adjust = "holm")
+pairs(emm) #Final result
+
+
+
+```
 
 
 # First analyses
